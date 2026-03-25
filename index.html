@@ -2178,6 +2178,7 @@ async function doLogin() {
   updateSidebarUser();
   showAdminNav(user.role === 'admin');
   startDashAutoRefresh();
+  flushQueue(); // ส่ง queue ที่ค้างจากครั้งก่อน (ถ้ามี)
 
   // แสดงหน้า dashboard ทันที (ใช้ข้อมูล local)
   showPage('dashboard');
@@ -3347,25 +3348,122 @@ function showToast(msg, type='success') {
 // =================== GAS INTEGRATION ===============
 // ===================================================
 
-// ---- ส่งข้อมูลไปยัง GAS (POST no-cors fire-and-forget) ----
-async function pushToGAS(action, data) {
-  if (!CONFIG.GAS_URL) return;
-  try {
-    const payload = {
-      action,
-      ...data,
-      userName:  currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : '',
-      dept:      currentUser?.dept     || '',
-      position:  currentUser?.position || '',
-      username:  currentUser?.username || '',
-    };
-    fetch(CONFIG.GAS_URL, {
-      method: 'POST', mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  } catch (e) { console.warn('GAS push failed:', e); }
+// ---- Queue สำหรับ retry เมื่อส่งไม่สำเร็จ ----
+let gasQueue = JSON.parse(localStorage.getItem('wfh_gas_queue') || '[]');
+
+function saveQueue() {
+  try { localStorage.setItem('wfh_gas_queue', JSON.stringify(gasQueue)); } catch(e) {}
 }
+
+// ---- ส่งข้อมูลไปยัง GAS พร้อม retry ----
+async function pushToGAS(action, data, opts = {}) {
+  if (!CONFIG.GAS_URL) return;
+
+  const payload = {
+    action,
+    ...data,
+    userName:  currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : '',
+    dept:      currentUser?.dept     || '',
+    position:  currentUser?.position || '',
+    username:  currentUser?.username || data.username || '',
+    clientTime: new Date().toISOString(),
+  };
+
+  // แสดง indicator เฉพาะ checkout
+  const isCheckout = action === 'checkout';
+  if (isCheckout) showSyncIndicator('กำลังบันทึกเวลาออกงาน...');
+
+  const success = await _sendToGAS(payload);
+
+  if (success) {
+    if (isCheckout) showSyncIndicator('✅ บันทึกเวลาออกงานสำเร็จ', 'success');
+    // flush queue ถ้ามีค้างอยู่
+    flushQueue();
+  } else {
+    if (isCheckout) showSyncIndicator('⚠️ จะลองบันทึกอีกครั้งโดยอัตโนมัติ', 'warning');
+    // เพิ่มเข้า queue เพื่อ retry
+    gasQueue.push({ payload, retries: 0, addedAt: Date.now() });
+    saveQueue();
+    scheduleRetry();
+  }
+}
+
+// ---- ส่งจริง (no-cors → ไม่รู้ผล แต่บันทึก timestamp เพื่อ verify) ----
+async function _sendToGAS(payload) {
+  try {
+    await Promise.race([
+      fetch(CONFIG.GAS_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
+    ]);
+    return true; // no-cors ถือว่าส่งสำเร็จเมื่อไม่ throw
+  } catch (e) {
+    console.warn('[GAS] push failed:', e.message);
+    return false;
+  }
+}
+
+// ---- Retry queue ----
+let retryTimer = null;
+function scheduleRetry() {
+  if (retryTimer) return;
+  retryTimer = setTimeout(flushQueue, 15000); // ลองใหม่ใน 15 วินาที
+}
+
+async function flushQueue() {
+  clearTimeout(retryTimer); retryTimer = null;
+  if (!gasQueue.length || !CONFIG.GAS_URL) return;
+
+  const pending = [...gasQueue];
+  gasQueue = [];
+  saveQueue();
+
+  for (const item of pending) {
+    const ok = await _sendToGAS(item.payload);
+    if (!ok && item.retries < 5) {
+      // คืน queue และลองใหม่
+      gasQueue.push({ ...item, retries: item.retries + 1 });
+    }
+  }
+  saveQueue();
+  if (gasQueue.length) scheduleRetry(); // ยังมีค้าง → retry อีกรอบ
+}
+
+// ---- Indicator แถบสถานะการส่ง GAS ----
+let syncIndicatorTimer = null;
+function showSyncIndicator(msg, type = 'info') {
+  let el = document.getElementById('gasSyncIndicator');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'gasSyncIndicator';
+    el.style.cssText = `
+      position:fixed; bottom:20px; right:20px;
+      background:#1a3a6b; color:#fff;
+      font-size:13px; font-weight:600;
+      padding:10px 18px; border-radius:22px;
+      z-index:9999; box-shadow:0 4px 20px rgba(0,0,0,0.25);
+      display:flex; align-items:center; gap:8px;
+      font-family:'Sarabun',sans-serif;
+      transition:opacity 0.3s ease;
+      pointer-events:none;
+    `;
+    document.body.appendChild(el);
+  }
+  const bg = { info:'#1a3a6b', success:'#276749', warning:'#d97706', error:'#c53030' };
+  const ic = { info:'fa-sync fa-spin', success:'fa-check-circle', warning:'fa-exclamation-triangle', error:'fa-times-circle' };
+  el.style.background = bg[type] || bg.info;
+  el.style.opacity = '1';
+  el.innerHTML = `<i class="fas ${ic[type] || ic.info}"></i> ${msg}`;
+  clearTimeout(syncIndicatorTimer);
+  if (type !== 'info') {
+    syncIndicatorTimer = setTimeout(() => { el.style.opacity = '0'; }, 4000);
+  }
+}
+
 
 // ---- ดึงข้อมูลจาก GAS ----
 // ลำดับ: 1) fetch ตรง (cors)  2) JSONP fallback
