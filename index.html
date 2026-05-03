@@ -481,6 +481,23 @@ textarea.form-control { padding-left: 14px; resize: vertical; min-height: 90px; 
 .stat-change.up { color: var(--success); }
 .stat-change.down { color: var(--danger); }
 
+
+.mockup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.mockup-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: linear-gradient(180deg, #ffffff, #f7faff);
+}
+.mockup-head { display:flex; align-items:center; gap:8px; margin-bottom:8px; color:var(--primary); font-weight:700; }
+.mockup-head i { color: var(--accent); }
+.mockup-desc { font-size:12.5px; color: var(--text-muted); line-height:1.45; }
+
 /* ======= DASHBOARD GRID ======= */
 .dash-grid {
   display: grid;
@@ -1264,6 +1281,22 @@ input:checked + .toggle-slider:before { transform: translateX(20px); }
               <div class="stat-value" id="statAbsent">0</div>
               <div class="stat-label">ยังไม่ลงชื่อ</div>
             </div>
+          </div>
+        </div>
+
+
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">
+            <div class="card-title"><i class="fas fa-object-group"></i> Mockup หน้าจอระบบ (ครบทุกหน้า)</div>
+            <span class="badge badge-blue">Modern Dashboard</span>
+          </div>
+          <div class="mockup-grid">
+            <div class="mockup-card"><div class="mockup-head"><i class="fas fa-right-to-bracket"></i> Login</div><div class="mockup-desc">หน้าล็อกอินเรียบหรู โทนราชการ พร้อมรองรับมือถือและเดสก์ท็อป</div></div>
+            <div class="mockup-card"><div class="mockup-head"><i class="fas fa-chart-pie"></i> Dashboard</div><div class="mockup-desc">สรุปภาพรวมวันนี้ด้วยการ์ดสถิติ ตาราง และกราฟแบบทันสมัย</div></div>
+            <div class="mockup-card"><div class="mockup-head"><i class="fas fa-user-clock"></i> Check-in / Check-out</div><div class="mockup-desc">ลงชื่อเข้า-ออกงาน ระบุสถานที่ ภารกิจ แนบรูป และบันทึก GPS</div></div>
+            <div class="mockup-card"><div class="mockup-head"><i class="fas fa-clock-rotate-left"></i> History</div><div class="mockup-desc">ดูประวัติย้อนหลังของตนเอง พร้อมตัวกรองข้อมูลรายวัน/รายเดือน</div></div>
+            <div class="mockup-card"><div class="mockup-head"><i class="fas fa-file-lines"></i> Reports</div><div class="mockup-desc">รายงานแยก WFH/ออกปฏิบัติราชการ ค้นหาและส่งออก Excel/PDF</div></div>
+            <div class="mockup-card"><div class="mockup-head"><i class="fas fa-users-cog"></i> Admin Panel</div><div class="mockup-desc">จัดการผู้ใช้งาน เพิ่ม แก้ไข ลบ และติดตามการลงชื่อทั้งหน่วยงาน</div></div>
           </div>
         </div>
 
